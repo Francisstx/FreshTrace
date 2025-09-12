@@ -1,6 +1,6 @@
 ;; FreshTrace - Farm-to-Table Supply Chain Tracking Contract with IoT Integration
 ;; This contract enables transparent tracking of agricultural products from farm to consumer
-;; with automated IoT sensor data collection and comprehensive input validation
+;; with automated IoT sensor data collection, comprehensive input validation, and quality certification system
 
 ;; Constants
 (define-constant CONTRACT_OWNER tx-sender)
@@ -8,6 +8,7 @@
 (define-constant ERR_NOT_FOUND (err u404))
 (define-constant ERR_INVALID_INPUT (err u400))
 (define-constant ERR_ALREADY_EXISTS (err u409))
+(define-constant ERR_CERTIFICATION_EXPIRED (err u410))
 
 ;; Validation constants
 (define-constant MIN_LATITUDE u0)        ;; -90 degrees * 1000000 = 0 (using offset)
@@ -19,9 +20,14 @@
 (define-constant MIN_HUMIDITY u0)         ;; 0%
 (define-constant MAX_HUMIDITY u10000)     ;; 100% * 100
 
+;; Certification constants
+(define-constant MAX_CERTIFICATIONS_PER_BATCH u10)
+(define-constant CERTIFICATION_VALIDITY_PERIOD u52560) ;; ~1 year in blocks (assuming 10min blocks)
+
 ;; Data Variables
 (define-data-var next-batch-id uint u1)
 (define-data-var next-producer-id uint u1)
+(define-data-var next-certification-id uint u1)
 
 ;; Data Maps
 (define-map producers 
@@ -74,6 +80,28 @@
 )
 
 (define-map sensor-data-count uint uint)
+
+;; Quality Certification System Maps
+(define-map quality-certifications
+  uint
+  {
+    certification-type: (string-ascii 30),  ;; "organic", "fair-trade", "non-gmo", etc.
+    certifying-body: (string-ascii 50),     ;; Name of certification authority
+    certificate-id: (string-ascii 50),      ;; Unique certificate identifier
+    issue-date: uint,                        ;; Block height when issued
+    expiry-date: uint,                       ;; Block height when expires
+    verification-status: bool,               ;; Contract owner verification
+    issuer: principal,                       ;; Who added this certification
+    created-at: uint
+  }
+)
+
+(define-map batch-certifications
+  {batch-id: uint, cert-index: uint}
+  uint  ;; certification-id
+)
+
+(define-map batch-certification-count uint uint)
 
 ;; Enhanced validation helpers
 (define-private (is-valid-string (str (string-ascii 200)))
@@ -142,6 +170,34 @@
     (> expiry-date harvest-date)
     (<= harvest-date stacks-block-height)
   )
+)
+
+(define-private (is-valid-cert-date-range (issue-date uint) (expiry-date uint))
+  (and 
+    (> issue-date u0)
+    (> expiry-date issue-date)
+    (<= issue-date stacks-block-height)
+    (<= (- expiry-date issue-date) CERTIFICATION_VALIDITY_PERIOD)
+  )
+)
+
+(define-private (is-certification-active (cert-id uint))
+  (match (map-get? quality-certifications cert-id)
+    cert-data
+    (and 
+      (get verification-status cert-data)
+      (> (get expiry-date cert-data) stacks-block-height)
+    )
+    false
+  )
+)
+
+(define-private (is-valid-certificate-id (cert-id (string-ascii 50)))
+  (and (> (len cert-id) u0) (<= (len cert-id) u50))
+)
+
+(define-private (is-valid-certifying-body (body (string-ascii 50)))
+  (and (> (len body) u0) (<= (len body) u50))
 )
 
 ;; Public Functions
@@ -214,8 +270,85 @@
         })
         (map-set batch-event-count batch-id u0)
         (map-set sensor-data-count batch-id u0)
+        (map-set batch-certification-count batch-id u0)
         (var-set next-batch-id (+ batch-id u1))
         (ok batch-id)
+      )
+      ERR_NOT_FOUND
+    )
+  )
+)
+
+;; Add quality certification
+(define-public (add-quality-certification
+  (certification-type (string-ascii 30))
+  (certifying-body (string-ascii 50))
+  (certificate-id (string-ascii 50))
+  (issue-date uint)
+  (expiry-date uint)
+)
+  (let ((cert-id (var-get next-certification-id)))
+    (asserts! (is-valid-certification certification-type) ERR_INVALID_INPUT)
+    (asserts! (is-valid-certifying-body certifying-body) ERR_INVALID_INPUT)
+    (asserts! (is-valid-certificate-id certificate-id) ERR_INVALID_INPUT)
+    (asserts! (is-valid-cert-date-range issue-date expiry-date) ERR_INVALID_INPUT)
+    (map-set quality-certifications cert-id {
+      certification-type: certification-type,
+      certifying-body: certifying-body,
+      certificate-id: certificate-id,
+      issue-date: issue-date,
+      expiry-date: expiry-date,
+      verification-status: false,
+      issuer: tx-sender,
+      created-at: stacks-block-height
+    })
+    (var-set next-certification-id (+ cert-id u1))
+    (ok cert-id)
+  )
+)
+
+;; Verify quality certification (only contract owner)
+(define-public (verify-quality-certification (cert-id uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT_OWNER) ERR_UNAUTHORIZED)
+    (asserts! (is-valid-uint cert-id) ERR_INVALID_INPUT)
+    (asserts! (< cert-id (var-get next-certification-id)) ERR_NOT_FOUND)
+    (match (map-get? quality-certifications cert-id)
+      cert-data
+      (begin
+        (asserts! (> (get expiry-date cert-data) stacks-block-height) ERR_CERTIFICATION_EXPIRED)
+        (map-set quality-certifications cert-id (merge cert-data {verification-status: true}))
+        (ok true)
+      )
+      ERR_NOT_FOUND
+    )
+  )
+)
+
+;; Assign certification to batch
+(define-public (assign-certification-to-batch (batch-id uint) (cert-id uint))
+  (begin
+    (asserts! (is-valid-uint batch-id) ERR_INVALID_INPUT)
+    (asserts! (< batch-id (var-get next-batch-id)) ERR_NOT_FOUND)
+    (asserts! (is-valid-uint cert-id) ERR_INVALID_INPUT)
+    (asserts! (< cert-id (var-get next-certification-id)) ERR_NOT_FOUND)
+    (asserts! (is-certification-active cert-id) ERR_CERTIFICATION_EXPIRED)
+    (match (map-get? batches batch-id)
+      batch-data
+      (match (map-get? producers (get producer-id batch-data))
+        producer-data
+        (let ((cert-count (default-to u0 (map-get? batch-certification-count batch-id)))
+              (new-cert-index (+ cert-count u1)))
+          (asserts! (is-eq (get owner producer-data) tx-sender) ERR_UNAUTHORIZED)
+          (asserts! (<= new-cert-index MAX_CERTIFICATIONS_PER_BATCH) ERR_INVALID_INPUT)
+          (map-set batch-certifications
+            {batch-id: batch-id, cert-index: new-cert-index}
+            cert-id
+          )
+          (map-set batch-certification-count batch-id new-cert-index)
+          (ok new-cert-index)
+        )
+        ERR_NOT_FOUND
       )
       ERR_NOT_FOUND
     )
@@ -342,6 +475,29 @@
   (default-to u0 (map-get? sensor-data-count batch-id))
 )
 
+;; Get quality certification
+(define-read-only (get-quality-certification (cert-id uint))
+  (map-get? quality-certifications cert-id)
+)
+
+;; Get batch certification
+(define-read-only (get-batch-certification (batch-id uint) (cert-index uint))
+  (match (map-get? batch-certifications {batch-id: batch-id, cert-index: cert-index})
+    cert-id (map-get? quality-certifications cert-id)
+    none
+  )
+)
+
+;; Get total certifications for batch
+(define-read-only (get-batch-certification-count (batch-id uint))
+  (default-to u0 (map-get? batch-certification-count batch-id))
+)
+
+;; Check if certification is active
+(define-read-only (is-certification-active-public (cert-id uint))
+  (is-certification-active cert-id)
+)
+
 ;; Get next batch ID
 (define-read-only (get-next-batch-id)
   (var-get next-batch-id)
@@ -350,6 +506,11 @@
 ;; Get next producer ID
 (define-read-only (get-next-producer-id)
   (var-get next-producer-id)
+)
+
+;; Get next certification ID
+(define-read-only (get-next-certification-id)
+  (var-get next-certification-id)
 )
 
 ;; Check if producer is verified
@@ -367,4 +528,8 @@
 
 (define-read-only (validate-sensor-reading (temperature uint) (humidity uint))
   (and (is-valid-temperature temperature) (is-valid-humidity humidity))
+)
+
+(define-read-only (validate-certification-dates (issue-date uint) (expiry-date uint))
+  (is-valid-cert-date-range issue-date expiry-date)
 )

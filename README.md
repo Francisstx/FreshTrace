@@ -1,10 +1,10 @@
 # FreshTrace 🌱
 
-A blockchain-based supply chain tracking system for agricultural products, enabling transparent farm-to-table traceability with IoT sensor integration on the Stacks blockchain.
+A blockchain-based supply chain tracking system for agricultural products, enabling transparent farm-to-table traceability with IoT sensor integration and comprehensive quality certification system on the Stacks blockchain.
 
 ## Overview
 
-FreshTrace provides a decentralized solution for tracking agricultural products from farm to consumer, ensuring transparency, authenticity, and food safety throughout the supply chain. Built with Clarity smart contracts on Stacks, it leverages Bitcoin's security for immutable record-keeping and integrates with IoT sensors for automated environmental monitoring.
+FreshTrace provides a decentralized solution for tracking agricultural products from farm to consumer, ensuring transparency, authenticity, and food safety throughout the supply chain. Built with Clarity smart contracts on Stacks, it leverages Bitcoin's security for immutable record-keeping, integrates with IoT sensors for automated environmental monitoring, and supports comprehensive quality certification tracking including organic, fair-trade, and other industry standards.
 
 ## Features
 
@@ -13,8 +13,12 @@ FreshTrace provides a decentralized solution for tracking agricultural products 
 - **Event Tracking**: Log transportation, processing, and distribution events
 - **IoT Sensor Integration**: Automated tracking of temperature, humidity, and GPS coordinates
 - **Environmental Monitoring**: Real-time environmental data recording for quality assurance
+- **Quality Certification System**: Track organic, fair-trade, non-GMO, and other certifications
+- **Certification Verification**: Contract owner verification of quality certifications
+- **Certification Assignment**: Link multiple certifications to product batches
+- **Certification Expiry Tracking**: Automated validation of certification validity periods
 - **Status Updates**: Real-time status tracking from harvest to retail
-- **Verification System**: Contract owner can verify legitimate producers
+- **Verification System**: Contract owner can verify legitimate producers and certifications
 - **Immutable Records**: All tracking data stored permanently on blockchain
 
 ## Getting Started
@@ -61,6 +65,21 @@ clarinet test
 (contract-call? .freshtrace create-batch u1 "Organic Tomatoes" u1000 u1700000000 u1702000000 "Greenhouse A")
 ```
 
+#### Add Quality Certification
+```clarity
+(contract-call? .freshtrace add-quality-certification "organic" "USDA Organic" "ORG-2024-001" u1700000000 u1752560000)
+```
+
+#### Verify Certification (Owner Only)
+```clarity
+(contract-call? .freshtrace verify-quality-certification u1)
+```
+
+#### Assign Certification to Batch
+```clarity
+(contract-call? .freshtrace assign-certification-to-batch u1 u1)
+```
+
 #### Add Tracking Event
 ```clarity
 (contract-call? .freshtrace add-batch-event u1 "shipped" "Distribution Center" "Shipped to regional distributor")
@@ -83,6 +102,9 @@ clarinet test
 - `register-producer`: Register a new producer
 - `verify-producer`: Verify producer (owner only)
 - `create-batch`: Create new product batch
+- `add-quality-certification`: Add new quality certification
+- `verify-quality-certification`: Verify certification (owner only)
+- `assign-certification-to-batch`: Link certification to batch
 - `add-batch-event`: Add tracking event to batch
 - `record-sensor-data`: Record IoT sensor readings for a batch
 - `update-batch-status`: Update batch status
@@ -95,6 +117,10 @@ clarinet test
 - `get-batch-event-count`: Get total events for batch
 - `get-sensor-data`: Get sensor reading for a batch
 - `get-sensor-data-count`: Get total sensor readings for batch
+- `get-quality-certification`: Get certification details
+- `get-batch-certification`: Get specific batch certification
+- `get-batch-certification-count`: Get total certifications for batch
+- `is-certification-active-public`: Check if certification is active and valid
 - `is-producer-verified`: Check producer verification status
 
 ## Data Structures
@@ -115,6 +141,38 @@ clarinet test
 ### Sensor Data
 - Temperature, humidity, GPS coordinates
 - Timestamp and batch association
+
+### Quality Certification
+- Certification type (organic, fair-trade, non-GMO, etc.)
+- Certifying body and certificate ID
+- Issue and expiry dates
+- Verification status and issuer information
+
+## Quality Certification System
+
+FreshTrace now supports comprehensive quality certification tracking for various industry standards:
+
+### Supported Certification Types
+- **Organic**: USDA Organic, EU Organic, JAS Organic
+- **Fair Trade**: Fair Trade USA, Fairtrade International
+- **Non-GMO**: Non-GMO Project Verified
+- **Sustainability**: Rainforest Alliance, UTZ Certified
+- **Religious**: Halal, Kosher
+- **Regional**: Protected Designation of Origin (PDO), Geographic Indication
+
+### Certification Features
+- **Multi-certification Support**: Each batch can have up to 10 different certifications
+- **Expiry Tracking**: Automatic validation of certification validity periods
+- **Verification System**: Contract owner verification required for legitimacy
+- **Immutable Records**: All certification data permanently stored on blockchain
+- **Traceability**: Full audit trail from certification issuance to batch assignment
+
+### Certification Workflow
+1. **Add Certification**: Certifying bodies or producers add new certifications
+2. **Owner Verification**: Contract owner verifies certification authenticity
+3. **Batch Assignment**: Verified certifications are assigned to product batches
+4. **Validity Checking**: System automatically validates certification status
+5. **Consumer Access**: End consumers can verify all certifications for any batch
 
 ## IoT Sensor Integration
 
@@ -138,6 +196,8 @@ clarinet test
 Test coverage includes:
 - Producer registration and verification
 - Batch creation and management
+- Quality certification system
+- Certification verification and assignment
 - Event tracking functionality
 - IoT sensor data recording
 - Access control and error handling
