@@ -1,6 +1,7 @@
 ;; FreshTrace - Farm-to-Table Supply Chain Tracking Contract with IoT Integration
 ;; This contract enables transparent tracking of agricultural products from farm to consumer
-;; with automated IoT sensor data collection, comprehensive input validation, and quality certification system
+;; with automated IoT sensor data collection, comprehensive input validation, quality certification system,
+;; and consumer verification portal with QR code support
 
 ;; Constants
 (define-constant CONTRACT_OWNER tx-sender)
@@ -51,7 +52,8 @@
     expiry-date: uint,
     location: (string-ascii 100),
     status: (string-ascii 20),
-    created-at: uint
+    created-at: uint,
+    qr-code: (string-ascii 100)
   }
 )
 
@@ -102,6 +104,21 @@
 )
 
 (define-map batch-certification-count uint uint)
+
+;; Consumer Verification System Maps
+(define-map consumer-verifications
+  {batch-id: uint, verification-id: uint}
+  {
+    verifier: principal,
+    timestamp: uint,
+    location: (string-ascii 100)
+  }
+)
+
+(define-map consumer-verification-count uint uint)
+
+;; QR code to batch-id mapping for quick lookups
+(define-map qr-code-lookup (string-ascii 100) uint)
 
 ;; Enhanced validation helpers
 (define-private (is-valid-string (str (string-ascii 200)))
@@ -200,6 +217,10 @@
   (and (> (len body) u0) (<= (len body) u50))
 )
 
+(define-private (is-valid-qr-code (qr-code (string-ascii 100)))
+  (and (> (len qr-code) u0) (<= (len qr-code) u100))
+)
+
 ;; Public Functions
 
 ;; Register a new producer
@@ -237,7 +258,7 @@
   )
 )
 
-;; Create a new batch
+;; Create a new batch with QR code
 (define-public (create-batch 
   (producer-id uint)
   (product-name (string-ascii 50))
@@ -245,6 +266,7 @@
   (harvest-date uint)
   (expiry-date uint)
   (location (string-ascii 100))
+  (qr-code (string-ascii 100))
 )
   (let ((batch-id (var-get next-batch-id)))
     (asserts! (is-valid-uint producer-id) ERR_INVALID_INPUT)
@@ -253,6 +275,8 @@
     (asserts! (is-valid-quantity quantity) ERR_INVALID_INPUT)
     (asserts! (is-valid-date-range harvest-date expiry-date) ERR_INVALID_INPUT)
     (asserts! (is-valid-location location) ERR_INVALID_INPUT)
+    (asserts! (is-valid-qr-code qr-code) ERR_INVALID_INPUT)
+    (asserts! (is-none (map-get? qr-code-lookup qr-code)) ERR_ALREADY_EXISTS)
     (match (map-get? producers producer-id)
       producer-data
       (begin
@@ -266,11 +290,14 @@
           expiry-date: expiry-date,
           location: location,
           status: "harvested",
-          created-at: stacks-block-height
+          created-at: stacks-block-height,
+          qr-code: qr-code
         })
+        (map-set qr-code-lookup qr-code batch-id)
         (map-set batch-event-count batch-id u0)
         (map-set sensor-data-count batch-id u0)
         (map-set batch-certification-count batch-id u0)
+        (map-set consumer-verification-count batch-id u0)
         (var-set next-batch-id (+ batch-id u1))
         (ok batch-id)
       )
@@ -443,6 +470,57 @@
   )
 )
 
+;; Consumer verification via QR code scan
+(define-public (verify-product-by-qr (qr-code (string-ascii 100)) (scan-location (string-ascii 100)))
+  (begin
+    (asserts! (is-valid-qr-code qr-code) ERR_INVALID_INPUT)
+    (asserts! (is-valid-location scan-location) ERR_INVALID_INPUT)
+    (match (map-get? qr-code-lookup qr-code)
+      batch-id
+      (let ((verification-count (default-to u0 (map-get? consumer-verification-count batch-id)))
+            (new-verification-id (+ verification-count u1)))
+        (map-set consumer-verifications
+          {batch-id: batch-id, verification-id: new-verification-id}
+          {
+            verifier: tx-sender,
+            timestamp: stacks-block-height,
+            location: scan-location
+          }
+        )
+        (map-set consumer-verification-count batch-id new-verification-id)
+        (ok batch-id)
+      )
+      ERR_NOT_FOUND
+    )
+  )
+)
+
+;; Consumer verification via batch ID
+(define-public (verify-product-by-batch (batch-id uint) (scan-location (string-ascii 100)))
+  (begin
+    (asserts! (is-valid-uint batch-id) ERR_INVALID_INPUT)
+    (asserts! (< batch-id (var-get next-batch-id)) ERR_NOT_FOUND)
+    (asserts! (is-valid-location scan-location) ERR_INVALID_INPUT)
+    (match (map-get? batches batch-id)
+      batch-data
+      (let ((verification-count (default-to u0 (map-get? consumer-verification-count batch-id)))
+            (new-verification-id (+ verification-count u1)))
+        (map-set consumer-verifications
+          {batch-id: batch-id, verification-id: new-verification-id}
+          {
+            verifier: tx-sender,
+            timestamp: stacks-block-height,
+            location: scan-location
+          }
+        )
+        (map-set consumer-verification-count batch-id new-verification-id)
+        (ok new-verification-id)
+      )
+      ERR_NOT_FOUND
+    )
+  )
+)
+
 ;; Read-only functions
 
 ;; Get producer information
@@ -453,6 +531,19 @@
 ;; Get batch information
 (define-read-only (get-batch (batch-id uint))
   (map-get? batches batch-id)
+)
+
+;; Get batch by QR code
+(define-read-only (get-batch-by-qr (qr-code (string-ascii 100)))
+  (match (map-get? qr-code-lookup qr-code)
+    batch-id (map-get? batches batch-id)
+    none
+  )
+)
+
+;; Get batch ID from QR code
+(define-read-only (get-batch-id-by-qr (qr-code (string-ascii 100)))
+  (map-get? qr-code-lookup qr-code)
 )
 
 ;; Get batch event
@@ -493,6 +584,44 @@
   (default-to u0 (map-get? batch-certification-count batch-id))
 )
 
+;; Get consumer verification
+(define-read-only (get-consumer-verification (batch-id uint) (verification-id uint))
+  (map-get? consumer-verifications {batch-id: batch-id, verification-id: verification-id})
+)
+
+;; Get total consumer verifications for batch
+(define-read-only (get-consumer-verification-count (batch-id uint))
+  (default-to u0 (map-get? consumer-verification-count batch-id))
+)
+
+;; Get complete verification data for consumers
+(define-read-only (get-complete-verification-data (batch-id uint))
+  (match (map-get? batches batch-id)
+    batch-data
+    (match (map-get? producers (get producer-id batch-data))
+      producer-data
+      (ok {
+        batch: batch-data,
+        producer: producer-data,
+        event-count: (default-to u0 (map-get? batch-event-count batch-id)),
+        sensor-count: (default-to u0 (map-get? sensor-data-count batch-id)),
+        cert-count: (default-to u0 (map-get? batch-certification-count batch-id)),
+        verification-count: (default-to u0 (map-get? consumer-verification-count batch-id))
+      })
+      ERR_NOT_FOUND
+    )
+    ERR_NOT_FOUND
+  )
+)
+
+;; Get complete verification data by QR code
+(define-read-only (get-complete-verification-data-by-qr (qr-code (string-ascii 100)))
+  (match (map-get? qr-code-lookup qr-code)
+    batch-id (get-complete-verification-data batch-id)
+    ERR_NOT_FOUND
+  )
+)
+
 ;; Check if certification is active
 (define-read-only (is-certification-active-public (cert-id uint))
   (is-certification-active cert-id)
@@ -519,6 +648,19 @@
     producer-data (get verified producer-data)
     false
   )
+)
+
+;; Check if batch has expired
+(define-read-only (is-batch-expired (batch-id uint))
+  (match (map-get? batches batch-id)
+    batch-data (>= stacks-block-height (get expiry-date batch-data))
+    false
+  )
+)
+
+;; Validate QR code exists
+(define-read-only (is-qr-code-valid (qr-code (string-ascii 100)))
+  (is-some (map-get? qr-code-lookup qr-code))
 )
 
 ;; Additional validation helper functions for external use

@@ -1,15 +1,16 @@
 # FreshTrace 🌱
 
-A blockchain-based supply chain tracking system for agricultural products, enabling transparent farm-to-table traceability with IoT sensor integration and comprehensive quality certification system on the Stacks blockchain.
+A blockchain-based supply chain tracking system for agricultural products, enabling transparent farm-to-table traceability with IoT sensor integration, comprehensive quality certification system, and consumer verification portal on the Stacks blockchain.
 
 ## Overview
 
-FreshTrace provides a decentralized solution for tracking agricultural products from farm to consumer, ensuring transparency, authenticity, and food safety throughout the supply chain. Built with Clarity smart contracts on Stacks, it leverages Bitcoin's security for immutable record-keeping, integrates with IoT sensors for automated environmental monitoring, and supports comprehensive quality certification tracking including organic, fair-trade, and other industry standards.
+FreshTrace provides a decentralized solution for tracking agricultural products from farm to consumer, ensuring transparency, authenticity, and food safety throughout the supply chain. Built with Clarity smart contracts on Stacks, it leverages Bitcoin's security for immutable record-keeping, integrates with IoT sensors for automated environmental monitoring, supports comprehensive quality certification tracking including organic, fair-trade, and other industry standards, and empowers consumers to verify product authenticity via QR code scanning.
 
 ## Features
 
 - **Producer Registration**: Farmers and producers can register and get verified
 - **Batch Creation**: Track individual product batches with harvest dates, quantities, and locations
+- **QR Code Integration**: Each batch gets a unique QR code for instant verification
 - **Event Tracking**: Log transportation, processing, and distribution events
 - **IoT Sensor Integration**: Automated tracking of temperature, humidity, and GPS coordinates
 - **Environmental Monitoring**: Real-time environmental data recording for quality assurance
@@ -17,6 +18,9 @@ FreshTrace provides a decentralized solution for tracking agricultural products 
 - **Certification Verification**: Contract owner verification of quality certifications
 - **Certification Assignment**: Link multiple certifications to product batches
 - **Certification Expiry Tracking**: Automated validation of certification validity periods
+- **Consumer Verification Portal**: QR code scanning system for end consumers
+- **Verification Analytics**: Track consumer scans and engagement metrics
+- **Complete Product History**: Consumers can view full supply chain journey
 - **Status Updates**: Real-time status tracking from harvest to retail
 - **Verification System**: Contract owner can verify legitimate producers and certifications
 - **Immutable Records**: All tracking data stored permanently on blockchain
@@ -29,6 +33,7 @@ FreshTrace provides a decentralized solution for tracking agricultural products 
 - Basic knowledge of Clarity smart contracts
 - Stacks wallet for testing
 - IoT sensors (optional, for automated data collection)
+- QR code generator (optional, for physical product labeling)
 
 ### Installation
 
@@ -60,9 +65,9 @@ clarinet test
 (contract-call? .freshtrace register-producer "Green Valley Farm" "California, USA" "Organic")
 ```
 
-#### Create Product Batch
+#### Create Product Batch with QR Code
 ```clarity
-(contract-call? .freshtrace create-batch u1 "Organic Tomatoes" u1000 u1700000000 u1702000000 "Greenhouse A")
+(contract-call? .freshtrace create-batch u1 "Organic Tomatoes" u1000 u1700000000 u1702000000 "Greenhouse A" "QR-BATCH-001-2024")
 ```
 
 #### Add Quality Certification
@@ -95,24 +100,38 @@ clarinet test
 (contract-call? .freshtrace update-batch-status u1 "delivered")
 ```
 
+#### Consumer Verification via QR Code
+```clarity
+(contract-call? .freshtrace verify-product-by-qr "QR-BATCH-001-2024" "Retail Store, New York")
+```
+
+#### Consumer Verification via Batch ID
+```clarity
+(contract-call? .freshtrace verify-product-by-batch u1 "Consumer Home, Boston")
+```
+
 ## Contract Functions
 
 ### Public Functions
 
 - `register-producer`: Register a new producer
 - `verify-producer`: Verify producer (owner only)
-- `create-batch`: Create new product batch
+- `create-batch`: Create new product batch with QR code
 - `add-quality-certification`: Add new quality certification
 - `verify-quality-certification`: Verify certification (owner only)
 - `assign-certification-to-batch`: Link certification to batch
 - `add-batch-event`: Add tracking event to batch
 - `record-sensor-data`: Record IoT sensor readings for a batch
 - `update-batch-status`: Update batch status
+- `verify-product-by-qr`: Consumer verification via QR code scan
+- `verify-product-by-batch`: Consumer verification via batch ID
 
 ### Read-Only Functions
 
 - `get-producer`: Get producer information
 - `get-batch`: Get batch details
+- `get-batch-by-qr`: Get batch details by QR code
+- `get-batch-id-by-qr`: Get batch ID from QR code
 - `get-batch-event`: Get specific batch event
 - `get-batch-event-count`: Get total events for batch
 - `get-sensor-data`: Get sensor reading for a batch
@@ -120,8 +139,14 @@ clarinet test
 - `get-quality-certification`: Get certification details
 - `get-batch-certification`: Get specific batch certification
 - `get-batch-certification-count`: Get total certifications for batch
+- `get-consumer-verification`: Get specific consumer verification record
+- `get-consumer-verification-count`: Get total consumer verifications for batch
+- `get-complete-verification-data`: Get all verification data for a batch
+- `get-complete-verification-data-by-qr`: Get all verification data by QR code
 - `is-certification-active-public`: Check if certification is active and valid
 - `is-producer-verified`: Check producer verification status
+- `is-batch-expired`: Check if batch has passed expiry date
+- `is-qr-code-valid`: Validate if QR code exists in system
 
 ## Data Structures
 
@@ -132,6 +157,7 @@ clarinet test
 ### Batch
 - Producer ID, product name, quantity
 - Harvest/expiry dates, current location and status
+- QR code for consumer verification
 - Creation timestamp
 
 ### Event
@@ -148,9 +174,57 @@ clarinet test
 - Issue and expiry dates
 - Verification status and issuer information
 
+### Consumer Verification
+- Verifier principal address
+- Timestamp of verification
+- Scan location
+
+## Consumer Verification Portal
+
+FreshTrace now includes a comprehensive consumer verification system that allows end users to authenticate products and view complete supply chain information.
+
+### Features
+
+- **QR Code Scanning**: Instant product verification by scanning QR codes on packaging
+- **Direct Batch Lookup**: Verify products using batch ID if QR code is unavailable
+- **Complete Transparency**: View full product journey from farm to store
+- **Verification Tracking**: All consumer scans are recorded with timestamp and location
+- **Real-time Data**: Access current batch status, location, and quality metrics
+- **Multi-level Information Access**:
+  - Producer details and verification status
+  - Product information (name, quantity, dates)
+  - Quality certifications with validity status
+  - Supply chain events and tracking history
+  - IoT sensor readings (temperature, humidity, location)
+  - Consumer engagement metrics
+
+### Consumer Verification Workflow
+
+1. **Scan QR Code**: Consumer scans QR code on product packaging
+2. **Instant Lookup**: System retrieves batch data using QR code
+3. **Display Information**: Complete product history is displayed
+4. **Record Verification**: Scan is logged with timestamp and location
+5. **Trust Building**: Consumers gain confidence in product authenticity
+
+### Benefits for Consumers
+
+- **Authenticity Guarantee**: Verify products are genuine and from verified producers
+- **Safety Assurance**: Check environmental conditions during transit
+- **Quality Confidence**: View all certifications (organic, fair-trade, etc.)
+- **Transparency**: See complete supply chain journey
+- **Informed Decisions**: Make purchasing decisions based on verifiable data
+
+### Benefits for Producers
+
+- **Consumer Engagement**: Track how many consumers verify products
+- **Brand Trust**: Build reputation through transparency
+- **Marketing Insights**: Understand where products are being purchased
+- **Quality Proof**: Demonstrate commitment to quality standards
+- **Competitive Advantage**: Differentiate through blockchain verification
+
 ## Quality Certification System
 
-FreshTrace now supports comprehensive quality certification tracking for various industry standards:
+FreshTrace supports comprehensive quality certification tracking for various industry standards:
 
 ### Supported Certification Types
 - **Organic**: USDA Organic, EU Organic, JAS Organic
@@ -186,6 +260,26 @@ FreshTrace supports integration with various IoT sensors for automated environme
 ### Data Recording
 Sensor data is automatically timestamped and permanently stored on the blockchain, providing an immutable record of environmental conditions throughout the supply chain journey.
 
+## QR Code Implementation Guide
+
+### For Producers
+
+1. **Generate Unique QR Codes**: Create unique identifiers for each batch
+2. **Format**: Use alphanumeric strings up to 100 characters
+3. **Best Practices**:
+   - Include batch identifier prefix (e.g., "QR-BATCH-")
+   - Add year/date information
+   - Keep codes scannable and high-contrast
+   - Test QR codes before mass printing
+
+### For Consumers
+
+1. **Scan QR Code**: Use any QR code scanner or FreshTrace mobile app
+2. **View Information**: Instantly access complete product history
+3. **Verify Authenticity**: Check producer verification status
+4. **Review Quality**: View certifications and sensor data
+5. **Track Journey**: See all supply chain events
+
 ## Testing
 
 Run the test suite:
@@ -195,12 +289,69 @@ clarinet test
 
 Test coverage includes:
 - Producer registration and verification
-- Batch creation and management
+- Batch creation and management with QR codes
 - Quality certification system
 - Certification verification and assignment
 - Event tracking functionality
 - IoT sensor data recording
+- Consumer verification via QR code
+- Consumer verification via batch ID
+- QR code lookup and validation
+- Complete verification data retrieval
 - Access control and error handling
+- Batch expiry validation
+
+## API Integration Examples
+
+### Mobile App Integration
+
+```javascript
+// Scan QR code and verify product
+async function verifyProduct(qrCode, location) {
+  const result = await callContract(
+    'verify-product-by-qr',
+    [qrCode, location]
+  );
+  return result;
+}
+
+// Get complete product information
+async function getProductInfo(qrCode) {
+  const data = await callReadOnly(
+    'get-complete-verification-data-by-qr',
+    [qrCode]
+  );
+  return data;
+}
+```
+
+### Web Portal Integration
+
+```javascript
+// Display product information
+async function displayProductDetails(batchId) {
+  const verification = await getCompleteVerificationData(batchId);
+  
+  return {
+    producer: verification.producer,
+    batch: verification.batch,
+    events: verification.event-count,
+    sensors: verification.sensor-count,
+    certifications: verification.cert-count,
+    verifications: verification.verification-count
+  };
+}
+```
+
+## Security Considerations
+
+- **Producer Verification**: Only verified producers can create batches
+- **Owner Controls**: Critical functions restricted to contract owner
+- **Data Validation**: Comprehensive input validation on all parameters
+- **QR Code Uniqueness**: System prevents duplicate QR codes
+- **Immutable Records**: All data permanently stored on blockchain
+- **Certification Validation**: Automatic expiry checking for certifications
+- **Access Control**: Proper authorization checks throughout
 
 ## Contributing
 
@@ -209,3 +360,21 @@ Test coverage includes:
 3. Commit your changes (`git commit -m 'Add amazing feature'`)
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Support
+
+For questions or issues, please open an issue on GitHub or contact the development team.
+
+## Roadmap
+
+- [ ] Mobile app development for QR scanning
+- [ ] Integration with major QR code platforms
+- [ ] Analytics dashboard for consumer insights
+- [ ] Multi-language support
+- [ ] Enhanced IoT sensor compatibility
+- [ ] AI-powered quality predictions
+- [ ] Supply chain optimization recommendations
